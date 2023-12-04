@@ -1,0 +1,77 @@
+
+FROM node:alpine 
+
+WORKDIR /app
+
+RUN apk update \
+&& apk add build-base \
+&& apk add g++
+
+RUN apk fetch openjdk8 \
+&& apk add openjdk8
+ENV JAVA_HOME=/usr/lib/jvm/java-1.8-openjdk
+ENV PATH="$JAVA_HOME/bin:${PATH}"
+
+
+RUN apk add python3 py3-pip \
+&& apk add --upgrade bash
+
+
+
+RUN apk add --upgrade bash
+
+
+ENV FPC_VERSION="3.2.2" \
+    FPC_ARCH="x86_64-linux"
+
+RUN apk add --no-cache binutils && \
+    cd /tmp && \
+    wget "https://downloads.sourceforge.net/project/freepascal/Linux/${FPC_VERSION}/fpc-${FPC_VERSION}.${FPC_ARCH}.tar" -O fpc.tar && \
+    tar xf "fpc.tar" && \
+    cd "fpc-${FPC_VERSION}.${FPC_ARCH}" && \
+    rm demo* doc* && \
+    \
+    # Workaround musl vs glibc entrypoint for `fpcmkcfg`
+    mkdir /lib64 && \
+    ln -s /lib/ld-musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2 && \
+    \
+    echo -e '/usr\nN\nN\nN\n' | sh ./install.sh && \
+    find "/usr/lib/fpc/${FPC_VERSION}/units/${FPC_ARCH}/" -type d -mindepth 1 -maxdepth 1 \
+        -not -name 'fcl-base' \
+        -not -name 'rtl' \
+        -not -name 'rtl-console ' \
+        -not -name 'rtl-objpas' \
+        -exec rm -r {} \; && \
+    rm -r "/lib64" "/tmp/"*
+
+RUN apk add dotnet7-sdk \
+&& apk add aspnetcore7-runtime \
+&& apk add dotnet7-runtime
+
+RUN apk add --no-cache wine freetype
+
+# Configure Wine
+RUN winecfg
+
+# Install wget
+RUN apk add --no-cache wget
+
+# Download Mono
+RUN wget -P /mono http://dl.winehq.org/wine/wine-mono/4.9.3/wine-mono-4.9.3.msi
+
+# Install Mono Runtime for .NET Applications
+RUN wine msiexec /i /mono/wine-mono-4.9.3.msi
+RUN rm -rf /mono/wine-mono-4.9.3.msi
+
+# RUN apk add unzip && \
+#     wget http://pascalabc.net/downloads/PABCNETC.zip -O /tmp/PABCNETC.zip &&\
+#     mkdir /opt/pabcnetc &&\
+#     unzip /tmp/PABCNETC.zip -d /opt/pabcnetc
+    
+COPY package.json /app/
+RUN npm install
+EXPOSE 3009
+
+COPY . /app/
+
+CMD ["npm", "run", "dev"]
